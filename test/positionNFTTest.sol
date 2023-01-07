@@ -24,6 +24,20 @@ contract positionNFTTest is Test, ERC721Holder {
         assertEq(PNFT.balanceOf(address(this)), 0);
     }
 
+    function testBurn() public {
+        PNFT.safeMint(unauthorizedAddress, 1);
+        assertEq(PNFT.balanceOf(unauthorizedAddress), 1);
+
+        vm.startPrank(unauthorizedAddress);
+        PNFT.approve(address(this), 1);
+        vm.stopPrank();
+
+        assertEq(PNFT.getApproved(1), address(this));
+
+        PNFT.burn(1);
+        assertEq(PNFT.balanceOf(unauthorizedAddress), 0);
+    }
+
     function testSafeMintAsNotOwner() public {
         //unauthorized address cannot mint
         vm.expectRevert();

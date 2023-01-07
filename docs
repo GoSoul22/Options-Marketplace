@@ -1,0 +1,38 @@
+// maker: who creates this order
+// taker: msg.sender
+
+Put Option: A put option (or “put”) is a contract giving the option buyer the right, but not the obligation, 
+            to **sell** a specified amount of an underlying security at a predetermined price within a specified time frame.
+
+Call Option: A call option (or "call") is a contract giving the option buyer the right, but not the obligation, 
+            to **buy** a specified amount of an underlying security at a predetermined price within a specified time frame.
+
+Premium/baseAsset:         WETH/DAI/USDT/BUSD/USDC
+the underlying:                   ERC20/ERC721
+strike:                    baseAsset or the underlying 
+msg.sender:                       taker
+order maker:                      maker 
+short -> sell 
+long  -> buy
+
+
+Short Put Order Maker: 
+    1. order maker receives a premium for writing an option from msg.sender(taker). -> transfer premium from msg.sender(is long) to order maker(is short)
+    2. order maker is obligated to buy the underlying at the strike price from the option owner.   -> transfer strike(WETH/DAI) from order maker to contract
+    3. order maker can withdraw the underlying(ERC20/ERC721)
+
+Long Put Order Maker:
+    1. order maker pays a premium to the msg.sender(taker). -> transfer premium from order maker(is long) to msg.sender(is short)
+    2. If the price falls below the strike price, order maker has the right to sell the underlying(ERC20/ERC721) at the strike price. -> transfer strike(ETH/ERC20) from msg.senfer(taker) to contract 
+
+
+
+
+Short Call Maker:
+    1. order maker receives a premium for writing an option from msg.sender. -> transfer premium from msg.sender(is long) to order maker(is short)
+    2. order maker is obligated to sell the underlying at the strike price to the option owner. -> transfer the underlying(ERC20/721) from order maker to contract
+    3. order maker can withdraw the baseAsset(WETH/DAI/USDT/BUSD/USDC)
+
+Long Call Maker:
+    1. order maker pays a premium to the msg.sender -> transfer premium from maker(is long) to msg.sender(is short)
+    2. If the price raises above the strike price, order maker has the right to buy the underlying at the strike price. -> transfer the underlying from msg.sender to contract
