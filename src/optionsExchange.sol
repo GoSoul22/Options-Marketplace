@@ -21,9 +21,10 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     positionNFT public PNFT;
     IWETH public immutable WETH;
 
-    uint256 public fee;
+    uint256 public makerFee;
+    uint256 public takerFee;
     address public feeAddress;
-    uint256 public orderNonce;
+    uint256 public orderNonce; //increments the nonce to ensure replay attacks are not possible.
 
     struct ERC20Asset{
         address token;
@@ -67,20 +68,21 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             "ERC721Asset(address token,uint256 tokenId)"
         ));
 
-    event NewFee(uint256 _fee);
+    event NewMakerFee(uint256 _fee);
+    event NewTakerFee(uint256 _fee);
     event NewFeeAddress(address _feeAddress);
     event NewBaseAsset(address _baseAsset, bool _flag);
-    event OrderFilled(Order _order);
-    event OrderCancelled(Order _order);
-    event OrderExercised(Order _order);
-    event OrderWithdrawn(Order _order);
+    event FilledOrder(Order _order);
+    event CancelledOrder(Order _order);
+    event ExercisedOrder(Order _order);
+    event WithdrawnOrder(Order _order);
 
 
-    constructor(address _WETH, address[] memory _baseAssets, address _feeAddress) {
-        require(_feeAddress != address(0) , "Invalid fee address.");
+    constructor(address _WETH, address[] memory _baseAssets) {
+        // require(_feeAddress != address(0) , "Invalid fee address.");
         require(_WETH != address(0), "Invalid WETH address.");
 
-        feeAddress = _feeAddress;
+        // feeAddress = _feeAddress;
         PNFT = new positionNFT();
         WETH = IWETH(_WETH);
         for(uint256 i = 0; i < _baseAssets.length; i++){
@@ -88,29 +90,11 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         }
     }
 
-    function setFee(uint256 _fee) external onlyOwner {
-        require(_fee < 100, "Fee must be less than 100");
-        fee = _fee;
-
-        emit NewFee(_fee);
-    }
-
-    function setFeeAddress(address _feeAddress) external onlyOwner {
-        require(_feeAddress != address(0), "Invalid fee address.");
-        feeAddress = _feeAddress;
-
-        emit NewFeeAddress(_feeAddress);
-    }
-
-    function setBaseAsset(address _baseAsset, bool _flag) external onlyOwner {
-        whiteListedBaseAsset[_baseAsset] =  _flag;
- 
-        emit NewBaseAsset(_baseAsset, _flag);
-    }
+    //** Main Logic */
 
     function fillOrder(Order memory _order, bytes calldata _signature) external payable returns(uint256){
 
-        _order.nonce = ++orderNonce;
+        _order.nonce = ++orderNonce; //increment the value of orderNonce, and then return the incremented value.
         bytes32 orderHash = getOrderStructHash(_order);  //return a hash of the order based on EIP-712 
         require(_order.maker != msg.sender, "Invalid order taker"); 
         require(_order.strike > 0, "Strike must be greater than 0");
@@ -171,7 +155,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             IERC20(_order.baseAsset).safeTransferFrom(_order.maker, address(this), _order.strike);
         }
 
-        emit OrderFilled(_order);
+        emit FilledOrder(_order);
 
         return uint256(oppositeOrderHash);
     }
@@ -215,7 +199,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         }
 
 
-        emit OrderExercised(_order);
+        emit ExercisedOrder(_order);
     }
 
     // withdraw a short position and burn short position NFT
@@ -223,7 +207,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
         bytes32 orderHash = getOrderStructHash(_order);
         bytes32 oppositeOrderHash = getOppositeOrderStructHash(_order);
-        isExercised = PNFT.ownerOf(uint(oppositeOrderHash)) == address(0) ? true : false;
+        bool isExercised = PNFT.ownerOf(uint(oppositeOrderHash)) == address(0) ? true : false;
         
         require(!_order.isLong, "Only short position can be withdrawn");
         require(PNFT.ownerOf(uint(orderHash)) == msg.sender, "Only short position owner can withdraw or order has been withdrawn");
@@ -235,40 +219,45 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
 
         if(_order.isCall && isExercised){
-            // short Call
+            // short Call exercised 
             //     1. order maker receives a premium for writing an option from msg.sender. -> transfer premium from msg.sender(is long) to order maker(is short)
             //     2. order maker is obligated to sell the underlying at the strike price to the option owner. -> transfer the underlying(ERC20/721) from order maker to contract
             //     3. order maker can withdraw the strike(WETH/DAI/USDT/BUSD/USDC)
             IERC20(_order.baseAsset).safeTransfer(msg.sender, _order.strike);
         }else if (_order.isCall && !isExercised){
+            // Short Call not exercised
             //  3. order maker can withdraw the underlying(ERC20/ERC721)
             transferERC20Out(_order.ERC20Assets, msg.sender);
             transferERC721Out(_order.ERC721Assets, msg.sender);
         }else if (!_order.isCall && isExercised){
-            // Short Put 
+            // Short Put exercised
             // 1. order maker receives a premium for writing an option from msg.sender(taker). -> transfer premium from msg.sender(is long) to order maker(is short)
             // 2. order maker is obligated to buy the underlying at the strike price from the option owner.   -> transfer strike(WETH/DAI) from order maker to contract
             // 3. order maker can withdraw the underlying(ERC20/ERC721)
             transferERC20Out(_order.ERC20Assets, msg.sender);
             transferERC721Out(_order.ERC721Assets, msg.sender);   
         }else{
+            // Short Put not exercised
              // 3. order maker can withdraw the strike(WETH/DAI)
             IERC20(_order.baseAsset).safeTransfer(msg.sender, _order.strike);
         }
     
 
-        emit OrderWithdrawn(_order);
+        emit WithdrawnOrder(_order);
     }
 
-    function cancelOrder(Order _order) external {){
+    //cancel an offchain order that user no longer want to be filled.
+    function cancelOrder(Order memory _order) external {
         require(_order.maker == msg.sender, "Not your order");
         bytes32 orderHash = getOrderStructHash(_order);
         require(PNFT.ownerOf(uint256(orderHash)) == address(0), "Order has been filled");
 
         OrderCancelled[uint256(orderHash)] = true;
 
-        emit OrderCancelled(_order);
+        emit CancelledOrder(_order);
     }
+
+    //** internal function */
 
     function transferERC20In(ERC20Asset[] memory assets, address from) internal {
         for(uint256 i = 0; i < assets.length; ++i){
@@ -323,7 +312,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         return _hashTypedDataV4(orderHash);
     }
 
-    function getERC20AssetsHash(ERC20Asset[] assets) public pure returns (bytes memory assetHash){
+    function getERC20AssetsHash(ERC20Asset[] memory assets) internal returns (bytes memory assetHash){
         for(uint256 i = 0; i< assets.length; ++i){
             assetHash = abi.encodePacked(assetHash, keccak256(abi.encode(
                     ERC20ASSET_TYPE_HASH,
@@ -335,7 +324,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         return assetHash;
     }
 
-    function getERC721AssetsHash(ERC721Asset[] assets) public pure returns (bytes memory assetHash){
+    function getERC721AssetsHash(ERC721Asset[] memory assets) internal returns (bytes memory assetHash){
         for(uint256 i = 0; i< assets.length; ++i){
             assetHash = abi.encodePacked(assetHash, keccak256(abi.encode(
                     ERC721ASSET_TYPE_HASH,
@@ -351,6 +340,37 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         _order.isLong = !_order.isLong;
 
         return getOrderStructHash(_order);
+    }
+
+    //** OnlyOner functions */
+    function setFees(uint256 _fee, bool isMaker) external onlyOwner {
+        require(_fee < 10, "Fee must be less than 10");
+
+
+        if (isMaker){
+            makerFee = _fee;
+            emit NewMakerFee(_fee);
+        } else {
+            takerFee = _fee;
+            emit NewTakerFee(_fee);
+        }
+    }
+
+    function setFeeAddress(address _feeAddress) external onlyOwner {
+        require(_feeAddress != address(0), "Invalid fee address.");
+        feeAddress = _feeAddress;
+
+        emit NewFeeAddress(_feeAddress);
+    }
+
+    function setBaseAsset(address _baseAsset, bool _flag) external onlyOwner {
+        whiteListedBaseAsset[_baseAsset] =  _flag;
+ 
+        emit NewBaseAsset(_baseAsset, _flag);
+    }
+
+    function getNextNonce() public view returns (uint256){
+        return orderNonce + 1;
     }
 
 
