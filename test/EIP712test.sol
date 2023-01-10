@@ -42,7 +42,7 @@ contract EIP712Test is Test {
 
         whitelists = [taker];
 
-        for(uint256 i = 0; i < 1; i++){
+        for(uint256 i = 0; i < 10; i++){
             MockERC20 token = new MockERC20("mockERC20Name", "mockERC20Symbol");
             ERC20Assets.push(dataStructs.ERC20Asset({
                 token: address(token),
@@ -50,7 +50,7 @@ contract EIP712Test is Test {
             }));
         }
 
-        for(uint256 i = 0; i < 1; i++){
+        for(uint256 i = 0; i < 10; i++){
             MockERC721 token = new MockERC721("mockERC721Name", "mockERC721Symbol");
             ERC721Assets.push(dataStructs.ERC721Asset({
                 token: address(token),
@@ -62,7 +62,7 @@ contract EIP712Test is Test {
 
 
 
-    function test_typedStructedData() public {
+    function testTypedStructedData_AsMaker() public {
         dataStructs.Order memory order = dataStructs.Order({
             maker: maker,
             isCall: true,
@@ -79,25 +79,50 @@ contract EIP712Test is Test {
         });
 
         bytes32 orderHash = sigUtil.getTypedDataHash(order);
-        vm.startPrank(maker);
-        bytes32 signature = ECDSA.toEthSignedMessageHash(orderHash);
-        vm.stopPrank();
 
 
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly {
-            r := mload(add(signature, 0x20))
-            s := mload(add(signature, 0x40))
-            v := byte(0, mload(add(signature, 0x60)))
-        }
-
-        // (uint8 v, bytes32 r, bytes32 s) = vm.sign(1, orderHash);
-        address signer = ecrecover(orderHash, v,r,s);
-        // assertEq(address(1), maker);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(makerPrivateKey, orderHash); 
+        assertEq(ecrecover(orderHash, v,r,s), maker);
         
-        // assertTrue(SignatureChecker.isValidSignatureNow(order.maker, orderHash, bytes.concat(signature)));
+        emit log_uint(v);  
+        emit log_bytes32(r);  
+        emit log_bytes32(s);  
+
+        bytes memory signature = abi.encodePacked(r, s, v);
+     
+        assertTrue(SignatureChecker.isValidSignatureNow(order.maker, orderHash, signature));
+
+    }
+
+    function testTypedStructedData_AsTaker() public {
+        dataStructs.Order memory order = dataStructs.Order({
+            maker: maker,
+            isCall: true,
+            isLong: false,
+            baseAsset: address(baseAsset),
+            strike: 100,
+            premium: 10,
+            duration: 100,
+            expiration: 100,
+            nonce: 12,  
+            whitelist: whitelists,
+            ERC20Assets: ERC20Assets,
+            ERC721Assets: ERC721Assets
+        });
+
+        bytes32 orderHash = sigUtil.getTypedDataHash(order);
+
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(takerPrivateKey, orderHash); 
+        assertEq(ecrecover(orderHash, v,r,s), taker);
+        
+        emit log_uint(v);  
+        emit log_bytes32(r);  
+        emit log_bytes32(s);  
+
+        bytes memory signature = abi.encodePacked(r, s, v);
+     
+        assertTrue(!SignatureChecker.isValidSignatureNow(order.maker, orderHash, signature));
 
     }
 }
