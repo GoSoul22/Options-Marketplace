@@ -24,7 +24,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     uint256 public makerFee;
     uint256 public takerFee;
     address public feeAddress;
-    uint256 public orderNonce; //increments the nonce to ensure replay attacks are not possible.
+
 
     struct ERC20Asset{
         address token;
@@ -54,6 +54,8 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     mapping(uint256 => uint256) public exerciseDate;
     mapping(address => bool) public whiteListedBaseAsset;
     mapping(uint256 => bool) public OrderCancelled;
+    mapping(uint256 => bool) public usedNonce; //ensure replay attacks are not possible.
+
 
     bytes32 public constant ERC20ASSET_TYPE_HASH =
         keccak256(abi.encodePacked("ERC20Asset(address token,uint256 amount)"));
@@ -94,8 +96,8 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
     function fillOrder(Order memory _order, bytes calldata _signature) external payable returns(uint256){
 
-        _order.nonce = ++orderNonce; //increment the value of orderNonce, and then return the incremented value.
         bytes32 orderHash = getOrderStructHash(_order);  //return a hash of the order based on EIP-712 
+        require(!usedNonce[_order.nonce], "Nonce has been used");
         require(_order.maker != msg.sender, "Invalid order taker"); 
         require(_order.strike > 0, "Strike must be greater than 0");
         require(_order.premium > 0, "Premium must be greater than 0");
@@ -292,7 +294,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         return false;
     }
 
-    function getOrderStructHash(Order memory _order) internal returns (bytes32) {
+    function getOrderStructHash(Order memory _order) public returns (bytes32) {
         bytes32 orderHash = keccak256(abi.encode(
             ORDER_TYPE_HASH,
             _order.maker,
@@ -337,9 +339,15 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     }
 
     function getOppositeOrderStructHash(Order memory _order) internal returns (bytes32) {
-        _order.isLong = !_order.isLong;
+        // _order.isLong = !_order.isLong;
 
-        return getOrderStructHash(_order);
+        // return getOrderStructHash(_order);
+
+        Order memory oppositePosition = abi.decode(abi.encode(_order), (Order));
+
+        oppositePosition.isLong = !_order.isLong;
+        bytes32 orderHash = getOrderStructHash(oppositePosition);
+        return orderHash;
     }
 
     //** OnlyOner functions */
@@ -369,11 +377,9 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         emit NewBaseAsset(_baseAsset, _flag);
     }
 
-    function getNextNonce() public view returns (uint256){
-        return orderNonce + 1;
+    function isNonceUsed(uint256 _nonce) external view returns (bool) {
+        return usedNonce[_nonce];
     }
-
-
 
 
 }

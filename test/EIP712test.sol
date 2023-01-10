@@ -6,11 +6,6 @@ import "./mocks/mockERC20.sol";
 import "./mocks/mockERC721.sol";
 import "./libraries/dataStructs.sol";
 
-// import "../src/optionsExchange.sol";
-
-// import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 
