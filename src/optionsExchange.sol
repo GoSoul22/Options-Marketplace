@@ -43,7 +43,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         address baseAsset;  // token used to pay premium and strike price
         uint256 strike;     // strike price
         uint256 premium;    // insurance fee
-        uint256 duration;   
+        uint256 duration;   // in seconds
         uint256 expiration; // last day to fill this order 
         uint256 nonce;      // make sure every order hash is different
         address[] whitelist;
