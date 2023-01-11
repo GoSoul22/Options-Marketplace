@@ -201,6 +201,7 @@ contract optionsExchangeTest is Test {
         assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
     }
 
+
     function testFillOrder_LongCall_Condition_Two() public {
 
         address[] memory temp = new address[](1);
@@ -409,6 +410,15 @@ contract optionsExchangeTest is Test {
         });
 
         vm.warp(_order.duration + 1 seconds); // fast forward one second past the deadline
+
+        //make sure order maker cannot call function exerciseOrder() because the order has expired.
+        vm.startPrank(maker);
+        PNFT.approve(address(optionsExchangeContract), makerNFT);
+        vm.expectRevert();
+        optionsExchangeContract.withdrawOrder(_oppsiteOrder);
+        vm.stopPrank();
+
+
         vm.startPrank(taker);
         PNFT.safeTransferFrom(taker, taker2, takerNFT);
         vm.stopPrank();
@@ -429,6 +439,15 @@ contract optionsExchangeTest is Test {
         assertEq(underlying_BTC.balanceOf(maker), 0);
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
         assertEq(underlying_BTC.balanceOf(taker2), _order.ERC20Assets[0].amount); 
+
+        // make sure taker cannot call function withdrawOrder()
+        vm.startPrank(taker);
+        vm.expectRevert("ERC721: invalid token ID");
+        PNFT.approve(address(optionsExchangeContract), takerNFT);
+        vm.expectRevert("ERC721: invalid token ID");
+        optionsExchangeContract.withdrawOrder(_oppsiteOrder);
+        vm.stopPrank();
+
     }
 
 }
