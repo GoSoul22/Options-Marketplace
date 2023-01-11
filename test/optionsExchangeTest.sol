@@ -33,8 +33,8 @@ contract optionsExchangeTest is Test {
 
         makerPrivateKey = 0xfb586f856d0a5ff10fd9ec3446dc478c58da9c10f72cfc50ed3b027c051e840f;
         takerPrivateKey = 0xf48675788d61ca922b56ea442d68027968ce3175d58e2cfdbc582130bd58f720;
-        maker = vm.addr(makerPrivateKey); //0xE74D59cCFA9bfCa8F11aFc98E7FfF1d13678E950
-        taker = vm.addr(takerPrivateKey); //0xfa350589Ae705f755483FF8cF709cf4dD33660A8
+        maker = vm.addr(makerPrivateKey); //public address: 0xE74D59cCFA9bfCa8F11aFc98E7FfF1d13678E950
+        taker = vm.addr(takerPrivateKey); //public address: 0xfa350589Ae705f755483FF8cF709cf4dD33660A8
 
         whitelists = [taker, 0xD52f027222A40C1a385263284D5aEC42DCEA5020, 0x8ca92E1f31914745a4D7665Db36D340A820BFB25];
 
@@ -58,7 +58,12 @@ contract optionsExchangeTest is Test {
     //Long Call Maker:
     // 1. order maker pays a premium to the msg.sender -> transfer premium from maker(is long) to msg.sender(is short)
     // 2. If the price raises above the strike price, order maker has the right to buy the underlying at the strike price. -> transfer the underlying from msg.sender to contract
-    function testFillOrder_LongCall() public {
+    // 3. condition 1: the price raises above the strike price: order maker will buy the underlying at the strike price. 
+    //      -> transfer the strike from order maker to contract.
+    //      -> transfer the strike from contract to order taker(msg.sender) when function withdrawOrder() is called.
+    // 4. condition 2: the price drops below the strike price: order maker will not buy the underlying at the strike price.
+    //      -> transfer the strike from contract to order taker(msg.sender) when function withdrawOrder() is called.
+    function testFillOrder_LongCall_Condition_One() public {
 
         address[] memory temp = new address[](1);
         temp[0] = address(baseAsset);
@@ -73,30 +78,6 @@ contract optionsExchangeTest is Test {
             amount: 100
         });
 
-
-        // mint 10 baseAsset to maker(for premium)
-        baseAsset.mint(maker, 10);
-
-        //mint 100 WBTC(underlying) to taker
-        underlying_BTC.mint(taker, 100);
-
-
-        //maker approves 10 baseAsset to optionsExchangeContract
-        vm.startPrank(maker);
-        baseAsset.approve(address(optionsExchangeContract), 10);
-        vm.stopPrank();
-        assertEq(baseAsset.allowance(maker, address(optionsExchangeContract)), 10);
-        emit log_uint(baseAsset.allowance(maker, address(optionsExchangeContract)));
-
-
-        //taker approves 100 WBTC to optionsExchangeContract
-        vm.startPrank(taker);
-        underlying_BTC.approve(address(optionsExchangeContract), 100);
-        vm.stopPrank();
-        assertEq(underlying_BTC.allowance(taker, address(optionsExchangeContract)), 100);
-        emit log_uint(underlying_BTC.allowance(taker, address(optionsExchangeContract)));
-
-
         optionsExchange.ERC721Asset[] memory ERC721temp;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
@@ -109,27 +90,120 @@ contract optionsExchangeTest is Test {
             expiration: 100,
             nonce: block.timestamp,
             whitelist: whitelists,
-            ERC20Assets: erc20Assets,
-            ERC721Assets: ERC721temp
+            ERC20Assets: erc20Assets, // only ERC20 assets
+            ERC721Assets: ERC721temp  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(makerPrivateKey, orderHash); //maker signs the order
-        bytes memory signature = abi.encodePacked(r, s, v); 
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(makerPrivateKey, orderHash); //maker signs the order hash
+        bytes memory signature = abi.encodePacked(r, s, v); //concatenate r, s, v
+
+
+        // mint 10 baseAsset to maker(for premium)
+        baseAsset.mint(maker, _order.premium);
+
+        //mint 100 WBTC(for the underlying) to taker
+        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+
+
+        //maker approves 10 baseAsset to optionsExchangeContract
+        vm.startPrank(maker);
+        baseAsset.approve(address(optionsExchangeContract), _order.premium);
+        vm.stopPrank();
+        assertEq(baseAsset.allowance(maker, address(optionsExchangeContract)), _order.premium);
+        // emit log_uint(baseAsset.allowance(maker, address(optionsExchangeContract)));
+
+        //taker approves 100 WBTC to optionsExchangeContract
+        vm.startPrank(taker);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        vm.stopPrank();
+        assertEq(underlying_BTC.allowance(taker, address(optionsExchangeContract)), 100);
+        // emit log_uint(underlying_BTC.allowance(taker, address(optionsExchangeContract)));
 
 
         //taker fills the order
         vm.startPrank(taker);
-        assertTrue(_order.isLong);
-        optionsExchangeContract.fillOrder(_order, signature);
+        (uint256 makerNFT, uint256 takerNFT) = optionsExchangeContract.fillOrder(_order, signature);
         vm.stopPrank();
 
         //check the balance of maker and taker
-        address PNFT = address(optionsExchangeContract.PNFT());
-        assertEq(IERC721(PNFT).balanceOf(maker), 1);
-        assertEq(IERC721(PNFT).balanceOf(taker), 1);
+        IERC721 PNFT = IERC721(address(optionsExchangeContract.PNFT()));
+        assertEq(PNFT.balanceOf(maker), 1);
+        assertEq(PNFT.balanceOf(taker), 1);
+        assertEq(PNFT.ownerOf(makerNFT), maker);
+        assertEq(PNFT.ownerOf(takerNFT), taker);
 
-        //MockERC20::transferFrom(0xfa350589Ae705f755483FF8cF709cf4dD33660A8, 0xE74D59cCFA9bfCa8F11aFc98E7FfF1d13678E950, 10) 
-        // -> transfer 10 baseAsset from taker to maker
+        assertEq(baseAsset.balanceOf(maker), 0);
+        assertEq(baseAsset.balanceOf(taker), _order.premium);
+
+        assertEq(underlying_BTC.balanceOf(taker), 0);
+        assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), _order.strike);
+        
+        // 3. condition 1: the price raises above the strike price: order maker will buy the underlying at the strike price. 
+        //      -> transfer the underlying from order taker(msg.sender) to contract.
+        //      -> transfer the underlying from contract to order maker or msg.sender if PNFT is transferred.
+        //      -> transfer the strike from contract to order taker(msg.sender) when function withdrawOrder() is called. 
+
+        //** Order maker exercises this order */
+        //mint 100 baseAsset to order maker 
+        baseAsset.mint(maker, _order.strike);// for the strike
+
+        vm.startPrank(maker);
+        PNFT.approve(address(optionsExchangeContract), makerNFT);
+        baseAsset.approve(address(optionsExchangeContract), _order.strike);
+        optionsExchangeContract.exerciseOrder(_order);
+        vm.stopPrank();
+
+        //check the balance of maker and taker
+        assertEq(PNFT.balanceOf(maker), 0);
+        assertEq(PNFT.balanceOf(taker), 1);
+        assertEq(PNFT.ownerOf(takerNFT), taker);
+
+        assertEq(baseAsset.balanceOf(maker), 0);
+        assertEq(baseAsset.balanceOf(address(optionsExchangeContract)), _order.strike);
+
+        assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
+
+         //** Order taker withdraws this order */
+        optionsExchange.Order memory _oppsiteOrder = optionsExchange.Order({
+            maker: maker,
+            isCall: true,
+            isLong: false,
+            baseAsset: address(baseAsset),
+            strike: 100,  
+            premium: 10,  
+            duration: 10,  
+            expiration: 100,
+            nonce: block.timestamp,
+            whitelist: whitelists,
+            ERC20Assets: erc20Assets, // only ERC20 assets
+            ERC721Assets: ERC721temp  //empty array
+        });
+
+        vm.startPrank(taker);
+        PNFT.approve(address(optionsExchangeContract), takerNFT);
+        optionsExchangeContract.withdrawOrder(_oppsiteOrder);
+        vm.stopPrank();
+
+        //check the balance of taker and the contract
+        assertEq(PNFT.balanceOf(taker), 0);
+
+        assertEq(baseAsset.balanceOf(address(optionsExchangeContract)), 0);
+        assertEq(baseAsset.balanceOf(taker), _order.strike + _order.premium);
+
+        assertEq(underlying_BTC.balanceOf(taker), 0);
+        assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
+        assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
     }
+
+    
 }
+
+
+//transfer NFT to another address and exercise the order
+
+
+// Sets an address' balance
+    // function deal(address who, uint256 newBalance) external;
+    //vm.deal(maker/taker, _order.premium/_order.strike);

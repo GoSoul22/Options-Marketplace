@@ -40,10 +40,10 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         address maker;
         bool isCall;
         bool isLong;
-        address baseAsset;  //underlying asset
-        uint256 strike;     // strike price * amount of baseAsset
+        address baseAsset;  // token used to pay premium and strike price
+        uint256 strike;     // strike price
         uint256 premium;    // insurance fee
-        uint256 duration;
+        uint256 duration;   
         uint256 expiration; // last day to fill this order 
         uint256 nonce;      // make sure every order hash is different
         address[] whitelist;
@@ -94,7 +94,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
     //** Main Logic */
 
-    function fillOrder(Order memory _order, bytes calldata _signature) external payable returns(uint256){
+    function fillOrder(Order memory _order, bytes calldata _signature) external payable returns(uint256, uint256){
 
         bytes32 orderHash = getOrderStructHash(_order);  //return a hash of the order based on EIP-712 
         require(!usedNonce[_order.nonce], "Nonce has been used");
@@ -114,6 +114,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         PNFT.safeMint(_order.maker, uint256(orderHash));
         PNFT.safeMint(msg.sender, uint256(oppositeOrderHash));
 
+        usedNonce[_order.nonce] = true;
         exerciseDate[_order.isLong ? uint256(orderHash) : uint256(oppositeOrderHash)] = _order.duration + block.timestamp;
 
 
@@ -159,7 +160,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
         emit FilledOrder(_order);
 
-        return uint256(oppositeOrderHash);
+        return (uint256(orderHash), uint256(oppositeOrderHash));
     }
 
     // exercise a long position and burn long position NFT
@@ -185,7 +186,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             }else{
                 IERC20(_order.baseAsset).safeTransferFrom(msg.sender, address(this), _order.strike);
             }
-            //transfer the underlying(ERC20/ERC721) from contract to order maker
+            //transfer the underlying(ERC20/ERC721) from contract to order maker(msg.sender)
             transferERC20Out(_order.ERC20Assets, msg.sender);
             transferERC721Out(_order.ERC721Assets, msg.sender);
         }else{
@@ -209,12 +210,11 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
         bytes32 orderHash = getOrderStructHash(_order);
         bytes32 oppositeOrderHash = getOppositeOrderStructHash(_order);
-        bool isExercised = PNFT.ownerOf(uint(oppositeOrderHash)) == address(0) ? true : false;
+        bool isExercised = !PNFT.exists(uint(oppositeOrderHash));
         
         require(!_order.isLong, "Only short position can be withdrawn");
-        require(PNFT.ownerOf(uint(orderHash)) == msg.sender, "Only short position owner can withdraw or order has been withdrawn");
-        require(exerciseDate[uint(orderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
-
+        require(PNFT.ownerOf(uint256(orderHash)) == msg.sender, "Only short position owner can withdraw or order has been withdrawn");
+        require(exerciseDate[uint256(orderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
         
         //burn short position NFT
         PNFT.burn(uint256(orderHash));
@@ -339,10 +339,6 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     }
 
     function getOppositeOrderStructHash(Order memory _order) internal returns (bytes32) {
-        // _order.isLong = !_order.isLong;
-
-        // return getOrderStructHash(_order);
-
         Order memory oppositePosition = abi.decode(abi.encode(_order), (Order));
 
         oppositePosition.isLong = !_order.isLong;
@@ -350,7 +346,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         return orderHash;
     }
 
-    //** OnlyOner functions */
+    //** OnlyOwner functions */
     function setFees(uint256 _fee, bool isMaker) external onlyOwner {
         require(_fee < 10, "Fee must be less than 10");
 

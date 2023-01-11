@@ -11,4 +11,8 @@ contract positionNFT is ERC721, ERC721Burnable, Ownable {
     function safeMint(address to, uint256 tokenId) public onlyOwner {
         _safeMint(to, tokenId);
     }
+
+    function exists(uint256 tokenId) public view returns (bool) {
+        return _exists(tokenId);
+    }
 }
