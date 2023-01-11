@@ -2,15 +2,15 @@ pragma solidity ^0.8.0;
 
 
 import "forge-std/Test.sol";
-import "./utils/signUtils.sol";
-import "./mocks/mockERC20.sol";
-import "./mocks/mockERC721.sol";
-import "./libraries/dataStructs.sol";
-import "../src/optionsExchange.sol";
+import "../utils/signUtils.sol";
+import "../mocks/mockERC20.sol";
+import "../mocks/mockERC721.sol";
+import "../libraries/dataStructs.sol";
+import "../../src/optionsExchange.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-contract optionsExchangeTest is Test {
+contract longCall is Test {
 
     address internal maker;
     address internal maker2;
@@ -65,13 +65,13 @@ contract optionsExchangeTest is Test {
 
     //Long Call Maker:
     // 1. order maker pays a premium to the msg.sender -> transfer premium from maker(is long) to msg.sender(is short)
-    // 2. If the price raises above the strike price, order maker has the right to buy the underlying at the strike price. -> transfer the underlying from msg.sender to contract
-    // 3. condition 1: the price raises above the strike price: order maker will buy the underlying at the strike price. 
+    // 2. If the price rises above the strike price, order maker has the right to buy the underlying at the strike price. -> transfer the underlying from msg.sender to contract
+    // 3. condition 1: the price rises above the strike price: order maker will buy the underlying at the strike price. 
     //      -> transfer the strike from order maker to contract.
     //      -> transfer the strike from contract to order taker(msg.sender) when function withdrawOrder() is called.
     // 4. condition 2: the price drops below the strike price: order maker will not buy the underlying at the strike price.
     //      -> transfer the underlying from contract to order taker(msg.sender) when function withdrawOrder() is called.
-    function testFillOrder_LongCall_Condition_One() public {
+    function test_LongCall_Condition_One() public {
 
         address[] memory temp = new address[](1);
         temp[0] = address(baseAsset);
@@ -205,7 +205,7 @@ contract optionsExchangeTest is Test {
         assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
     }
 
-    function testFillOrder_LongCall_Condition_One_WithMakerNFTTransferred() public {
+    function test_LongCall_Condition_One_WithMakerNFTTransferred() public {
 
         address[] memory temp = new address[](1);
         temp[0] = address(baseAsset);
@@ -356,7 +356,7 @@ contract optionsExchangeTest is Test {
     }
 
 
-    function testFillOrder_LongCall_Condition_Two() public {
+    function test_LongCall_Condition_Two() public {
 
         address[] memory temp = new address[](1);
         temp[0] = address(baseAsset);
@@ -468,7 +468,7 @@ contract optionsExchangeTest is Test {
         assertEq(underlying_BTC.balanceOf(taker), _order.ERC20Assets[0].amount); 
     }
 
-    function testFillOrder_LongCall_Condition_Two_WithTakerNFTTransferred() public {
+    function test_LongCall_Condition_Two_WithTakerNFTTransferred() public {
 
         address[] memory temp = new address[](1);
         temp[0] = address(baseAsset);
