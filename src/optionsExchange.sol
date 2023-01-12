@@ -209,13 +209,13 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     function withdrawOrder(Order memory _order) external{
 
         bytes32 orderHash = getOrderStructHash(_order);
-        bytes32 oppositeOrderHash = getOppositeOrderStructHash(_order);
-        bool isExercised = !PNFT.exists(uint(oppositeOrderHash));
+        bytes32 longOrderHash = getOppositeOrderStructHash(_order);
+        bool isExercised = !PNFT.exists(uint(longOrderHash));
         
         require(!_order.isLong, "Only short position can be withdrawn");
         require(PNFT.ownerOf(uint256(orderHash)) == msg.sender, "Only short position owner can withdraw or order has been withdrawn");
-        require(exerciseDate[uint256(orderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
-        
+        require(exerciseDate[uint256(longOrderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
+
         //burn short position NFT
         PNFT.burn(uint256(orderHash));
 
