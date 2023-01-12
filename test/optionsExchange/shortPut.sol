@@ -162,7 +162,6 @@ contract shortPut is Test{
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), _order.ERC20Assets[0].amount);
 
          //** Order maker withdraws this order */
-
         vm.startPrank(maker);
         PNFT.approve(address(optionsExchangeContract), makerNFT);
         optionsExchangeContract.withdrawOrder(_order);
@@ -255,7 +254,7 @@ contract shortPut is Test{
         optionsExchangeContract.withdrawOrder(_order);
         vm.stopPrank();
 
-        //check the balance of maker and taker 
+        //check the balance of maker
         assertEq(PNFT.balanceOf(maker), 0);
 
         assertEq(baseAsset.balanceOf(address(optionsExchangeContract)), 0);
@@ -281,9 +280,8 @@ contract shortPut is Test{
             ERC721Assets: ERC721temp  //empty array
         });
 
-        //mint 100 WBTC to order taker 
+        //mint _order.ERC20Assets[0].amount WBTC to order taker and _order.strike baseAsset
         underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
-
         baseAsset.mint(address(optionsExchangeContract), _order.strike);
 
         vm.startPrank(taker);

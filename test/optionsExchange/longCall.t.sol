@@ -45,22 +45,6 @@ contract longCall is Test {
         taker2 = vm.addr(taker2PrivateKey); //public address:
 
         whitelists = [taker, 0xD52f027222A40C1a385263284D5aEC42DCEA5020, 0x8ca92E1f31914745a4D7665Db36D340A820BFB25];
-
-        // for(uint256 i = 0; i < 11; i++){
-        //     MockERC20 token = new MockERC20("mockERC20Name", "mockERC20Symbol");
-        //     ERC20Assets.push(dataStructs.ERC20Asset({
-        //         token: address(token),
-        //         amount: 100
-        //     }));
-        // }
-
-        // for(uint256 i = 0; i < 10; i++){
-        //     MockERC721 token = new MockERC721("mockERC721Name", "mockERC721Symbol");
-        //     ERC721Assets.push(dataStructs.ERC721Asset({
-        //         token: address(token),
-        //         tokenId: 100
-        //     }));
-        // }
     }
 
     //Long Call Maker:
@@ -605,9 +589,6 @@ contract longCall is Test {
     }
 
 }
-
-
-//transfer NFT to another address and exercise the order
 
 
 // Sets an address' balance

@@ -133,6 +133,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         }
         
         //transfer strike(ERC20/ERC721) assets
+        //cannot be optimized but left for readability
         if(_order.isLong && _order.isCall){
             // long call
             //transfer the strike(ERC20/ERC721) from msg.sender to contract
@@ -172,7 +173,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         require(PNFT.ownerOf(uint256(orderHash)) == msg.sender, "Only long position owner can exercise or order has been exercised");
 
 
-        //burn long position NFT
+        //Checks Effects Interactions pattern: burn long position NFT 
         PNFT.burn(uint256(orderHash));
 
         if(_order.isCall){
@@ -216,7 +217,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         require(PNFT.ownerOf(uint256(orderHash)) == msg.sender, "Only short position owner can withdraw or order has been withdrawn");
         require(exerciseDate[uint256(longOrderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
 
-        //burn short position NFT
+        //Checks Effects Interactions pattern: burn short position NFT
         PNFT.burn(uint256(orderHash));
 
 
@@ -252,7 +253,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     function cancelOrder(Order memory _order) external {
         require(_order.maker == msg.sender, "Not your order");
         bytes32 orderHash = getOrderStructHash(_order);
-        require(PNFT.ownerOf(uint256(orderHash)) == address(0), "Order has been filled");
+        require(!PNFT.exists(uint256(orderHash)), "Order has been filled");
 
         OrderCancelled[uint256(orderHash)] = true;
 
