@@ -4,7 +4,7 @@ import "forge-std/Test.sol";
 import "./utils/signUtils.sol";
 import "./mocks/mockERC20.sol";
 import "./mocks/mockERC721.sol";
-import "./libraries/dataStructs.sol";
+import "./libs/dataStructs.sol";
 
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
@@ -21,8 +21,8 @@ contract EIP712Test is Test {
 
 
     address[] whitelists;
-    dataStructs.ERC20Asset[] ERC20Assets;
-    dataStructs.ERC721Asset[] ERC721Assets;
+    dataStructs.ERC20Asset erc20Token;
+    dataStructs.ERC721Asset erc721Token;
 
     function setUp() public {
         
@@ -37,21 +37,27 @@ contract EIP712Test is Test {
 
         whitelists = [taker];
 
-        for(uint256 i = 0; i < 10; i++){
-            MockERC20 token = new MockERC20("mockERC20Name", "mockERC20Symbol");
-            ERC20Assets.push(dataStructs.ERC20Asset({
-                token: address(token),
-                amount: 100
-            }));
-        }
+        MockERC20 token = new MockERC20("mockERC20Name", "mockERC20Symbol");
+        erc20Token = dataStructs.ERC20Asset({
+            token: address(token),
+            amount: 100
+        });
 
-        for(uint256 i = 0; i < 10; i++){
-            MockERC721 token = new MockERC721("mockERC721Name", "mockERC721Symbol");
-            ERC721Assets.push(dataStructs.ERC721Asset({
-                token: address(token),
-                tokenId: 100
-            }));
-        }
+        // for(uint256 i = 0; i < 10; i++){
+        //     MockERC20 token = new MockERC20("mockERC20Name", "mockERC20Symbol");
+        //     ERC20Assets.push(dataStructs.ERC20Asset({
+        //         token: address(token),
+        //         amount: 100
+        //     }));
+        // }
+
+        // for(uint256 i = 0; i < 10; i++){
+        //     MockERC721 token = new MockERC721("mockERC721Name", "mockERC721Symbol");
+        //     ERC721Assets.push(dataStructs.ERC721Asset({
+        //         token: address(token),
+        //         tokenId: 100
+        //     }));
+        // }
 
     }
 
@@ -62,6 +68,7 @@ contract EIP712Test is Test {
             maker: maker,
             isCall: true,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,
             premium: 10,
@@ -69,9 +76,10 @@ contract EIP712Test is Test {
             expiration: 100,
             nonce: 1,  
             whitelist: whitelists,
-            ERC20Assets: ERC20Assets,
-            ERC721Assets: ERC721Assets
+            underlyingERC20: erc20Token,
+            underlyingERC721: erc721Token
         });
+
 
         bytes32 orderHash = sigUtil.getTypedDataHash(order);
 
@@ -94,6 +102,7 @@ contract EIP712Test is Test {
             maker: maker,
             isCall: true,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,
             premium: 10,
@@ -101,8 +110,8 @@ contract EIP712Test is Test {
             expiration: 100,
             nonce: 12,  
             whitelist: whitelists,
-            ERC20Assets: ERC20Assets,
-            ERC721Assets: ERC721Assets
+            underlyingERC20: erc20Token,
+            underlyingERC721: erc721Token
         });
 
         bytes32 orderHash = sigUtil.getTypedDataHash(order);

@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 import "../mocks/mockERC20.sol";
 import "../mocks/mockERC721.sol";
-import "../libraries/dataStructs.sol";
+import "../libs/dataStructs.sol";
 import "../../src/optionsExchange.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -19,17 +19,15 @@ contract shortPut is Test{
     uint256 internal maker2PrivateKey;
     uint256 internal takerPrivateKey;
     uint256 internal taker2PrivateKey;
+    uint256 internal nonceToUse = 90324782215;
+
 
     MockERC20 internal baseAsset;
-
-    address[] whitelists;
-    dataStructs.ERC20Asset[] ERC20Assets;
-    dataStructs.ERC721Asset[] ERC721Assets;
+    
 
     optionsExchange internal optionsExchangeContract;
 
     function setUp() public {
-
         baseAsset = new MockERC20("baseAsset", "baseAsset");
 
         makerPrivateKey = 0xfb586f856d0a5ff10fd9ec3446dc478c58da9c10f72cfc50ed3b027c051e840f;
@@ -40,8 +38,6 @@ contract shortPut is Test{
         maker2 = vm.addr(maker2PrivateKey); //public address: 
         taker = vm.addr(takerPrivateKey); //public address: 0xfa350589Ae705f755483FF8cF709cf4dD33660A8
         taker2 = vm.addr(taker2PrivateKey); //public address:
-
-        whitelists = [taker, 0xD52f027222A40C1a385263284D5aEC42DCEA5020, 0x8ca92E1f31914745a4D7665Db36D340A820BFB25];
     }
 
 // Short Put Order Maker: 
@@ -65,26 +61,25 @@ contract shortPut is Test{
         optionsExchangeContract = new optionsExchange(address(1), temp);
         MockERC20 underlying_BTC = new MockERC20("Wrapped BTC", "WBTC");
 
-        optionsExchange.ERC20Asset[] memory erc20Assets = new optionsExchange.ERC20Asset[](1);
-        erc20Assets[0] = optionsExchange.ERC20Asset({
+        optionsExchange.ERC20Asset memory erc20Asset = optionsExchange.ERC20Asset({
             token: address(underlying_BTC),
             amount: 100
         });
 
-        optionsExchange.ERC721Asset[] memory ERC721temp;
+        optionsExchange.ERC721Asset memory ERC721temp;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
             isCall: false,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
@@ -130,22 +125,22 @@ contract shortPut is Test{
             maker: maker,
             isCall: false,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
         //mint 100 WBTC to order taker 
-        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+        underlying_BTC.mint(taker, _order.underlyingERC20.amount);
 
         vm.startPrank(taker);
         PNFT.approve(address(optionsExchangeContract), takerNFT);
-        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.underlyingERC20.amount);
         optionsExchangeContract.exerciseOrder(_oppsiteOrder);
         vm.stopPrank();
 
@@ -159,7 +154,7 @@ contract shortPut is Test{
 
         assertEq(underlying_BTC.balanceOf(maker), 0); 
         assertEq(underlying_BTC.balanceOf(taker), 0); 
-        assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), _order.ERC20Assets[0].amount);
+        assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), _order.underlyingERC20.amount);
 
          //** Order maker withdraws this order */
         vm.startPrank(maker);
@@ -176,7 +171,7 @@ contract shortPut is Test{
 
         assertEq(underlying_BTC.balanceOf(taker), 0);
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
-        assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(maker), _order.underlyingERC20.amount); 
     }
 
     function test_ShortPut_Condition_Two() public {
@@ -188,26 +183,25 @@ contract shortPut is Test{
         optionsExchangeContract = new optionsExchange(address(1), temp);
         MockERC20 underlying_BTC = new MockERC20("Wrapped BTC", "WBTC");
 
-        optionsExchange.ERC20Asset[] memory erc20Assets = new optionsExchange.ERC20Asset[](1);
-        erc20Assets[0] = optionsExchange.ERC20Asset({
+        optionsExchange.ERC20Asset memory erc20Asset = optionsExchange.ERC20Asset({
             token: address(underlying_BTC),
             amount: 100
         });
 
-        optionsExchange.ERC721Asset[] memory ERC721temp;
+        optionsExchange.ERC721Asset memory ERC721temp;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
             isCall: false,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100 days,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
@@ -269,24 +263,24 @@ contract shortPut is Test{
             maker: maker,
             isCall: false,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100 days,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
-        //mint _order.ERC20Assets[0].amount WBTC to order taker and _order.strike baseAsset
-        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+        //mint _order.underlyingERC20.amount WBTC to order taker and _order.strike baseAsset
+        underlying_BTC.mint(taker, _order.underlyingERC20.amount);
         baseAsset.mint(address(optionsExchangeContract), _order.strike);
 
         vm.startPrank(taker);
         PNFT.approve(address(optionsExchangeContract), takerNFT);
-        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.underlyingERC20.amount);
         vm.expectRevert("Order has expired");
         optionsExchangeContract.exerciseOrder(_oppsiteOrder);
         vm.stopPrank();

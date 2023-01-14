@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import "../utils/signUtils.sol";
 import "../mocks/mockERC20.sol";
 import "../mocks/mockERC721.sol";
-import "../libraries/dataStructs.sol";
+import "../libs/dataStructs.sol";
 import "../../src/optionsExchange.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -21,18 +21,13 @@ contract longCall is Test {
     uint256 internal takerPrivateKey;
     uint256 internal taker2PrivateKey;
 
-    sigUtils internal sigUtil;
-    MockERC20 internal baseAsset;
+    uint256 internal nonceToUse = 789233;
 
-    address[] whitelists;
-    dataStructs.ERC20Asset[] ERC20Assets;
-    dataStructs.ERC721Asset[] ERC721Assets;
+    MockERC20 internal baseAsset;
 
     optionsExchange internal optionsExchangeContract;
 
     function setUp() public {
-
-        // sigUtil = new sigUtils();
         baseAsset = new MockERC20("baseAsset", "baseAsset");
 
         makerPrivateKey = 0xfb586f856d0a5ff10fd9ec3446dc478c58da9c10f72cfc50ed3b027c051e840f;
@@ -43,8 +38,6 @@ contract longCall is Test {
         maker2 = vm.addr(maker2PrivateKey); //public address: 
         taker = vm.addr(takerPrivateKey); //public address: 0xfa350589Ae705f755483FF8cF709cf4dD33660A8
         taker2 = vm.addr(taker2PrivateKey); //public address:
-
-        whitelists = [taker, 0xD52f027222A40C1a385263284D5aEC42DCEA5020, 0x8ca92E1f31914745a4D7665Db36D340A820BFB25];
     }
 
     //Long Call Maker:
@@ -64,26 +57,25 @@ contract longCall is Test {
         optionsExchangeContract = new optionsExchange(address(1), temp);
         MockERC20 underlying_BTC = new MockERC20("Wrapped BTC", "WBTC");
 
-        optionsExchange.ERC20Asset[] memory erc20Assets = new optionsExchange.ERC20Asset[](1);
-        erc20Assets[0] = optionsExchange.ERC20Asset({
+        optionsExchange.ERC20Asset memory erc20Asset = optionsExchange.ERC20Asset({
             token: address(underlying_BTC),
             amount: 100
         });
 
-        optionsExchange.ERC721Asset[] memory ERC721temp;
+        optionsExchange.ERC721Asset memory ERC721temp;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
             isCall: true,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
@@ -95,7 +87,7 @@ contract longCall is Test {
         baseAsset.mint(maker, _order.premium);
 
         //mint 100 WBTC(for the underlying) to taker
-        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+        underlying_BTC.mint(taker, _order.underlyingERC20.amount);
 
 
         //maker approves 10 baseAsset to optionsExchangeContract
@@ -107,7 +99,7 @@ contract longCall is Test {
 
         //taker approves 100 WBTC to optionsExchangeContract
         vm.startPrank(taker);
-        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.underlyingERC20.amount);
         vm.stopPrank();
         assertEq(underlying_BTC.allowance(taker, address(optionsExchangeContract)), 100);
         // emit log_uint(underlying_BTC.allowance(taker, address(optionsExchangeContract)));
@@ -154,7 +146,7 @@ contract longCall is Test {
         assertEq(baseAsset.balanceOf(maker), 0);
         assertEq(baseAsset.balanceOf(address(optionsExchangeContract)), _order.strike);
 
-        assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(maker), _order.underlyingERC20.amount); 
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
 
          //** Order taker withdraws this order */
@@ -162,15 +154,15 @@ contract longCall is Test {
             maker: maker,
             isCall: true,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
         vm.startPrank(taker);
@@ -186,7 +178,7 @@ contract longCall is Test {
 
         assertEq(underlying_BTC.balanceOf(taker), 0);
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
-        assertEq(underlying_BTC.balanceOf(maker), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(maker), _order.underlyingERC20.amount); 
     }
 
     function test_LongCall_Condition_One_WithMakerNFTTransferred() public {
@@ -197,26 +189,25 @@ contract longCall is Test {
         optionsExchangeContract = new optionsExchange(address(1), temp);
         MockERC20 underlying_BTC = new MockERC20("Wrapped BTC", "WBTC");
 
-        optionsExchange.ERC20Asset[] memory erc20Assets = new optionsExchange.ERC20Asset[](1);
-        erc20Assets[0] = optionsExchange.ERC20Asset({
+        optionsExchange.ERC20Asset memory erc20Asset = optionsExchange.ERC20Asset({
             token: address(underlying_BTC),
             amount: 100
         });
 
-        optionsExchange.ERC721Asset[] memory ERC721Empty;
+        optionsExchange.ERC721Asset memory ERC721Empty;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
             isCall: true,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721Empty  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721Empty  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
@@ -228,7 +219,7 @@ contract longCall is Test {
         baseAsset.mint(maker, _order.premium);
 
         //mint 100 WBTC(for the underlying) to taker
-        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+        underlying_BTC.mint(taker, _order.underlyingERC20.amount);
 
 
         //maker approves 10 baseAsset to optionsExchangeContract
@@ -240,7 +231,7 @@ contract longCall is Test {
 
         //taker approves 100 WBTC to optionsExchangeContract
         vm.startPrank(taker);
-        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.underlyingERC20.amount);
         vm.stopPrank();
         assertEq(underlying_BTC.allowance(taker, address(optionsExchangeContract)), 100);
         // emit log_uint(underlying_BTC.allowance(taker, address(optionsExchangeContract)));
@@ -304,7 +295,7 @@ contract longCall is Test {
         assertEq(baseAsset.balanceOf(maker2), 0);
         assertEq(baseAsset.balanceOf(address(optionsExchangeContract)), _order.strike);
 
-        assertEq(underlying_BTC.balanceOf(maker2), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(maker2), _order.underlyingERC20.amount); 
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
 
          //** Order taker withdraws this order */
@@ -312,15 +303,15 @@ contract longCall is Test {
             maker: maker,
             isCall: true,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721Empty  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721Empty  //empty array
         });
 
         vm.startPrank(taker);
@@ -336,7 +327,7 @@ contract longCall is Test {
 
         assertEq(underlying_BTC.balanceOf(taker), 0);
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
-        assertEq(underlying_BTC.balanceOf(maker2), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(maker2), _order.underlyingERC20.amount); 
     }
 
 
@@ -349,26 +340,25 @@ contract longCall is Test {
         optionsExchangeContract = new optionsExchange(address(1), temp);
         MockERC20 underlying_BTC = new MockERC20("Wrapped BTC", "WBTC");
 
-        optionsExchange.ERC20Asset[] memory erc20Assets = new optionsExchange.ERC20Asset[](1);
-        erc20Assets[0] = optionsExchange.ERC20Asset({
+        optionsExchange.ERC20Asset memory erc20Asset = optionsExchange.ERC20Asset({
             token: address(underlying_BTC),
             amount: 100
         });
 
-        optionsExchange.ERC721Asset[] memory ERC721temp;
+        optionsExchange.ERC721Asset memory ERC721temp;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
             isCall: true,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
@@ -380,7 +370,7 @@ contract longCall is Test {
         baseAsset.mint(maker, _order.premium);
 
         //mint 100 WBTC(for the underlying) to taker
-        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+        underlying_BTC.mint(taker, _order.underlyingERC20.amount);
 
 
         //maker approves 10 baseAsset to optionsExchangeContract
@@ -391,14 +381,14 @@ contract longCall is Test {
 
         //taker approves 100 WBTC to optionsExchangeContract
         vm.startPrank(taker);
-        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.underlyingERC20.amount);
         vm.stopPrank();
         assertEq(underlying_BTC.allowance(taker, address(optionsExchangeContract)), 100);
 
 
         //taker fills the order
         vm.startPrank(taker);
-        (uint256 makerNFT, uint256 takerNFT) = optionsExchangeContract.fillOrder(_order, signature);
+        (uint256 makerNFT, uint256 takerNFT) = optionsExchangeContract.fillOrder(_order, signature);  //!!!!fillorder
         vm.stopPrank();
 
         //check the balance of maker and taker
@@ -418,27 +408,27 @@ contract longCall is Test {
         //      -> transfer the underlying from contract to order taker(msg.sender) when function withdrawOrder() is called.
 
          //** Order maker does not exercise this order */
+        vm.warp(block.timestamp + _order.duration + 1 seconds); // fast forward one second past the deadline
 
          //** Order taker withdraws this order */
         optionsExchange.Order memory _oppsiteOrder = optionsExchange.Order({
             maker: maker,
             isCall: true,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
-        vm.warp(_order.duration + 1 seconds); // fast forward one second past the deadline
-        vm.startPrank(taker);
-        PNFT.approve(address(optionsExchangeContract), takerNFT);
-        optionsExchangeContract.withdrawOrder(_oppsiteOrder);
+        vm.startPrank(taker);                                     
+        PNFT.approve(address(optionsExchangeContract), takerNFT); 
+        optionsExchangeContract.withdrawOrder(_oppsiteOrder); 
         vm.stopPrank();
 
         //check the balance of taker and the contract
@@ -449,7 +439,7 @@ contract longCall is Test {
 
         assertEq(underlying_BTC.balanceOf(maker), 0);
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
-        assertEq(underlying_BTC.balanceOf(taker), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(taker), _order.underlyingERC20.amount); 
     }
 
     function test_LongCall_Condition_Two_WithTakerNFTTransferred() public {
@@ -461,26 +451,25 @@ contract longCall is Test {
         optionsExchangeContract = new optionsExchange(address(1), temp);
         MockERC20 underlying_BTC = new MockERC20("Wrapped BTC", "WBTC");
 
-        optionsExchange.ERC20Asset[] memory erc20Assets = new optionsExchange.ERC20Asset[](1);
-        erc20Assets[0] = optionsExchange.ERC20Asset({
+        optionsExchange.ERC20Asset memory erc20Asset = optionsExchange.ERC20Asset({
             token: address(underlying_BTC),
             amount: 100
         });
 
-        optionsExchange.ERC721Asset[] memory ERC721temp;
+        optionsExchange.ERC721Asset memory ERC721temp;
         optionsExchange.Order memory _order = optionsExchange.Order({
             maker: maker,
             isCall: true,
             isLong: true,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
 
         bytes32 orderHash = optionsExchangeContract.getOrderStructHash(_order);
@@ -492,7 +481,7 @@ contract longCall is Test {
         baseAsset.mint(maker, _order.premium);
 
         //mint 100 WBTC(for the underlying) to taker
-        underlying_BTC.mint(taker, _order.ERC20Assets[0].amount);
+        underlying_BTC.mint(taker, _order.underlyingERC20.amount);
 
 
         //maker approves 10 baseAsset to optionsExchangeContract
@@ -503,7 +492,7 @@ contract longCall is Test {
 
         //taker approves 100 WBTC to optionsExchangeContract
         vm.startPrank(taker);
-        underlying_BTC.approve(address(optionsExchangeContract), _order.ERC20Assets[0].amount);
+        underlying_BTC.approve(address(optionsExchangeContract), _order.underlyingERC20.amount);
         vm.stopPrank();
         assertEq(underlying_BTC.allowance(taker, address(optionsExchangeContract)), 100);
 
@@ -529,31 +518,30 @@ contract longCall is Test {
         // 4. condition 2: If the price drops below the strike price: order maker will not buy the underlying at the strike price.
         //      -> transfer the underlying from contract to order taker(msg.sender) when function withdrawOrder() is called.
 
-         //** Order maker does not exercise this order */
+         //** Order maker did not exercise this order */
+        vm.warp(block.timestamp + _order.duration + 1 seconds); // fast forward one second past the deadline
 
          //** Order taker withdraws this order */
         optionsExchange.Order memory _oppsiteOrder = optionsExchange.Order({
             maker: maker,
             isCall: true,
             isLong: false,
+            isERC20: true,
             baseAsset: address(baseAsset),
             strike: 100,  
             premium: 10,  
             duration: 10 days,  
             expiration: 100,
-            nonce: block.timestamp,
-            whitelist: whitelists,
-            ERC20Assets: erc20Assets, // only ERC20 assets
-            ERC721Assets: ERC721temp  //empty array
+            nonce: nonceToUse,
+            underlyingERC20: erc20Asset, // only ERC20 assets
+            underlyingERC721: ERC721temp  //empty array
         });
-
-        vm.warp(_order.duration + 1 seconds); // fast forward one second past the deadline
 
         //make sure order maker cannot call function exerciseOrder() because the order has expired.
         vm.startPrank(maker);
         PNFT.approve(address(optionsExchangeContract), makerNFT);
-        vm.expectRevert();
-        optionsExchangeContract.withdrawOrder(_oppsiteOrder);
+        vm.expectRevert("Order has expired");
+        optionsExchangeContract.exerciseOrder(_order);
         vm.stopPrank();
 
 
@@ -564,7 +552,7 @@ contract longCall is Test {
         
         vm.startPrank(taker2);
         PNFT.approve(address(optionsExchangeContract), takerNFT);
-        optionsExchangeContract.withdrawOrder(_oppsiteOrder);
+        optionsExchangeContract.withdrawOrder(_oppsiteOrder); 
         vm.stopPrank();
 
         assertEq(baseAsset.balanceOf(taker), _order.premium);
@@ -576,7 +564,7 @@ contract longCall is Test {
 
         assertEq(underlying_BTC.balanceOf(maker), 0);
         assertEq(underlying_BTC.balanceOf(address(optionsExchangeContract)), 0);
-        assertEq(underlying_BTC.balanceOf(taker2), _order.ERC20Assets[0].amount); 
+        assertEq(underlying_BTC.balanceOf(taker2), _order.underlyingERC20.amount); 
 
         // make sure taker cannot call function withdrawOrder()
         vm.startPrank(taker);
