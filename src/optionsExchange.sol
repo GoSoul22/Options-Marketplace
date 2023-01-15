@@ -51,11 +51,10 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         ERC721Asset underlyingERC721;
     }
 
-    
-    
+
     mapping(uint256 => bool) public usedNonce; //ensure replay attacks are not possible.
     mapping(uint256 => bool) public OrderCancelled;
-    mapping(uint256 => uint256) public exerciseDate;
+    mapping(uint256 => uint256) public lastTradingDay; // Last Trading Day 
     mapping(address => bool) public whiteListedBaseAsset;
 
 
@@ -76,17 +75,16 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
     event NewTakerFee(uint256 _fee);
     event NewFeeAddress(address _feeAddress);
     event NewBaseAsset(address _baseAsset, bool _flag);
-    event FilledOrder(Order _order);
-    event CancelledOrder(Order _order);
-    event ExercisedOrder(Order _order);
+    event CallOptionFilled(Order _order);
+    event PutOptionFilled(Order _order);
+    event CallOptionExercised(Order _order);
+    event PutOptionExercised(Order _order);
     event WithdrawnOrder(Order _order);
 
 
     constructor(address _WETH, address[] memory _baseAssets) {
-        // require(_feeAddress != address(0) , "Invalid fee address.");
         require(_WETH != address(0), "Invalid WETH address.");
 
-        // feeAddress = _feeAddress;
         PNFT = new positionNFT();
         WETH = IWETH(_WETH);
         for(uint256 i = 0; i < _baseAssets.length; i++){
@@ -126,14 +124,16 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         PNFT.safeMint(msg.sender, uint256(oppositeOrderHash));
 
         usedNonce[_order.nonce] = true;
-        exerciseDate[_order.isLong ? uint256(orderHash) : uint256(oppositeOrderHash)] = _order.duration + block.timestamp;
+        lastTradingDay[_order.isLong ? uint256(orderHash) : uint256(oppositeOrderHash)] = _order.duration + block.timestamp;
 
 
         //** Interactions */
-        // transfer premium
+        // transfer premium from long(buy) side to short(sell) side
         if(_order.isLong){
+            // order is long  => transfer premium from _order.maker(long) to msg.sender(short)
             IERC20(_order.baseAsset).safeTransferFrom(_order.maker, msg.sender, _order.premium);
         }else{
+            // order is short => transfer premium from msg.sender(long) to _order.maker(short)
             if(_order.baseAsset == address(WETH) && msg.value > 0){
                 //pay with ETH instead of WETH
                 require(msg.value == _order.premium, "Premium must be equal to msg.value");
@@ -144,8 +144,8 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             }
         }
         
-        //transfer strike(ERC20/ERC721) assets
-        //cannot be optimized but left for readability
+        //transfer strike(ERC20/ERC721) assets from short(sell) side to long(buy) side
+        //can be optimized but left for readability
         if(_order.isLong && _order.isCall){
             // long call
             //transfer the strike(ERC20/ERC721) from msg.sender to contract
@@ -154,6 +154,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             }else{
                 IERC721(_order.underlyingERC721.token).safeTransferFrom(msg.sender, address(this), _order.underlyingERC721.tokenId);
             }
+            emit CallOptionFilled(_order);
         }else if (_order.isLong && !_order.isCall){
             // long put
             //transfer the strike(ETH/ERC20) from msg.sender to contract
@@ -163,6 +164,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             }else{
                 IERC20(_order.baseAsset).safeTransferFrom(msg.sender, address(this), _order.strike);
             }
+            emit PutOptionFilled(_order);
         }else if (!_order.isLong && _order.isCall){
             // short call
              //transfer the strike(ERC20/ERC721) from  _order.maker to contract    
@@ -170,14 +172,15 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
                 IERC20(_order.underlyingERC20.token).safeTransferFrom(_order.maker, address(this), _order.underlyingERC20.amount);
             }else{
                 IERC721(_order.underlyingERC721.token).safeTransferFrom(_order.maker, address(this), _order.underlyingERC721.tokenId);
-            } 
+            }
+            emit CallOptionFilled(_order);
         }else if (!_order.isLong && !_order.isCall){
             // short put
             //transfer the strike(ERC20) from msg.sender to contract
             IERC20(_order.baseAsset).safeTransferFrom(_order.maker, address(this), _order.strike);
+            emit PutOptionFilled(_order);
         }
 
-        emit FilledOrder(_order);
 
         return (uint256(orderHash), uint256(oppositeOrderHash));
     }
@@ -188,7 +191,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         //** Checks */
         bytes32 orderHash = getOrderStructHash(_order);
         require(_order.isLong, "Only long position can be exercised");
-        require(exerciseDate[uint(orderHash)] >= block.timestamp, "Order has expired");
+        require(lastTradingDay[uint(orderHash)] >= block.timestamp, "Order has expired");
         require(PNFT.ownerOf(uint256(orderHash)) == msg.sender, "Only long position owner can exercise or order has been exercised");
 
          //** Effects */
@@ -213,6 +216,8 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
             }else{
                 IERC721(_order.underlyingERC721.token).safeTransferFrom(address(this), msg.sender, _order.underlyingERC721.tokenId);
             }
+
+            emit CallOptionExercised(_order);
         }else{
             //long put
             //If the price falls below the strike price, msg.sender has the right to sell the underlying(ERC20/ERC721) at the strike price. 
@@ -225,10 +230,9 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
 
             //transfer the strike(ETH/ERC20) from contract to msg.sender.
             IERC20(_order.baseAsset).safeTransfer(msg.sender, _order.strike);
+            
+            emit PutOptionExercised(_order);
         }
-
-
-        emit ExercisedOrder(_order);
     }
 
     // withdraw a short position and burn short position NFT
@@ -240,7 +244,7 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         bool isExercised = !PNFT.exists(uint256(longOrderHash));
         require(!_order.isLong, "Only short position can be withdrawn");
         require(PNFT.ownerOf(uint256(orderHash)) == msg.sender, "Only short position owner can withdraw or order has been withdrawn");
-        require(exerciseDate[uint256(longOrderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
+        require(lastTradingDay[uint256(longOrderHash)] < block.timestamp || isExercised, "Order has not expired or long position has not been exercised");
 
          //** Effects */
         //burn short position NFT
@@ -292,6 +296,21 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         emit CancelledOrder(_order);
     }
 
+    //** View/Getter functions */
+    function isCancelled(Order memory _order) external view returns (bool){
+        bytes32 orderHash = getOrderStructHash(_order);
+        return OrderCancelled[uint256(orderHash)];
+    }
+
+    function lastTradingDay(Order _order) external view returns (uint256){
+        bytes32 orderHash = getOrderStructHash(_order);
+        return lastTradingDay[uint256(orderHash)];
+    }
+
+    function isNonceUsed(uint256 _nonce) external view returns (bool) {
+        return usedNonce[_nonce];
+    }
+
     //** internal function */
     function getOrderStructHash(Order memory _order) public returns (bytes32) {
         bytes32 orderHash = keccak256(abi.encode(
@@ -335,10 +354,10 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         require(_fee < 10, "Fee must be less than 10");
 
         if (isMaker){
-            makerFee = _fee;
+            makerFee = _fee; // TODO
             emit NewMakerFee(_fee);
         } else {
-            takerFee = _fee;
+            takerFee = _fee; // TODO
             emit NewTakerFee(_fee);
         }
     }
@@ -354,10 +373,6 @@ contract optionsExchange is ERC721Holder, EIP712("OptionExchange", "1.0"), Ownab
         whiteListedBaseAsset[_baseAsset] =  _flag;
  
         emit NewBaseAsset(_baseAsset, _flag);
-    }
-
-    function isNonceUsed(uint256 _nonce) external view returns (bool) {
-        return usedNonce[_nonce];
     }
 
 
